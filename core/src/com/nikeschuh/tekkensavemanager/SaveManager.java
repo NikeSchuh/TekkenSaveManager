@@ -29,6 +29,8 @@ import com.nikeschuh.tekkensavemanager.utils.ByteUtils;
 import com.nikeschuh.tekkensavemanager.utils.RenderTask;
 import com.nikeschuh.tekkensavemanager.widgets.SaveInfoWidget;
 
+import java.awt.*;
+import java.io.IOException;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
@@ -51,11 +53,17 @@ public class SaveManager extends ApplicationAdapter {
 	VisCheckBox backupGhosts;
 	VisCheckBox backupReplays;
 
+	public static VisProgressBar progressBar;
+
+	static VisTextButton backupButton;
+
 	FileHandle saveDirectory;
 	FileHandle backupDirectory;
 
+	VisTextField backupDirSettings;
+
 	ThreadPoolExecutor taskExecutor;
-	boolean lock = false;
+	volatile boolean lock = false;
 
 	@Override
 	public void create () {
@@ -75,6 +83,7 @@ public class SaveManager extends ApplicationAdapter {
 
 
 		VisUI.load();
+
 		Gdx.graphics.setContinuousRendering(false);
 
 
@@ -120,24 +129,61 @@ public class SaveManager extends ApplicationAdapter {
 		leftSideContent.addActor(backupGhosts);
 		leftSideContent.addActor(backupReplays);
 
-		leftSideContent.addActor(new VisTextButton("Create Backup", new ChangeListener() {
+
+		leftSideContent.addActor(backupButton = new VisTextButton("Create Backup", new ChangeListener() {
 			@Override
 			public void changed(ChangeEvent event, Actor actor) {
 					if(lock) return;
+					lock = true;
 				    taskExecutor.submit(()->{
+						backupButton.setDisabled(true);
 						BackupManager.createBackup(saveDirectory, backupDirectory.child("T8Backup-" +getCurrentDateTimeFormatted() + ".t8backup"), (file) ->{
 							queueRendering(()->addSaveWidget(file));
+							try {
+								Thread.sleep(2000);
+							} catch (InterruptedException e) {
+								throw new RuntimeException(e);
+							}
+							backupButton.setDisabled(false);
+							lock = false;
 							}, backupReplays.isChecked(), backupGhosts.isChecked());;
 						System.gc();
-						lock = false;
 					});
 			}
 		}));
+
+		leftSideContent.addActor(new VisTextButton("Open Backup folder", new ChangeListener() {
+			@Override
+			public void changed(ChangeEvent event, Actor actor) {
+				try {
+					Desktop.getDesktop().open(backupDirectory.file());
+				} catch (IOException e) {
+					throw new RuntimeException(e);
+				}
+			}
+		}));
+
+		leftSideContent.addActor(new VisTextButton("Open Save Folder", new ChangeListener() {
+			@Override
+			public void changed(ChangeEvent event, Actor actor) {
+				try {
+					Desktop.getDesktop().open(saveDirectory.file());
+				} catch (IOException e) {
+					throw new RuntimeException(e);
+				}
+			}
+		}));
+
+		leftSideContent.addActor(backupDirSettings = new VisTextField(backupDirectory.file().getAbsolutePath()));
 
 		splitPane = new SplitPane(leftSideContent, scrollPane, false, VisUI.getSkin());
 		splitPane.setSplitAmount(0.2F);
 		splitPane.setMaxSplitAmount(0.5F);
 		splitPane.setFillParent(true);
+
+		progressBar = new VisProgressBar(0F, 1F, 0.001F, false);
+		progressBar.setVisible(false);
+		leftSideContent.addActor(progressBar);
 
 
 		stage.addActor(splitPane);
@@ -165,12 +211,8 @@ public class SaveManager extends ApplicationAdapter {
 
 		long timeStamp = ByteUtils.readLong(array, 8);
 
-		SaveInfoWidget saveInfoWidget = null;
-		VisTextButton loadButton = null;
-		VisTextButton deleteButton = null;
-
-		scrollPaneContents.add(saveInfoWidget = new SaveInfoWidget(fileHandle.nameWithoutExtension(), new Date(timeStamp), fileHandle.length(), VisUI.getSkin()));
-		scrollPaneContents.add(loadButton = new VisTextButton("Load", new ChangeListener() {
+		scrollPaneContents.add(new SaveInfoWidget(fileHandle.nameWithoutExtension(), new Date(timeStamp), fileHandle.length(), VisUI.getSkin()));
+		scrollPaneContents.add(new VisTextButton("Load", new ChangeListener() {
 			@Override
 			public void changed(ChangeEvent event, Actor actor) {
 				if(lock) return;
@@ -186,7 +228,7 @@ public class SaveManager extends ApplicationAdapter {
 
 			}
 		})).padRight(10F).fillY().padLeft(10F).padBottom(5).padTop(5);
-		scrollPaneContents.add(deleteButton = new VisTextButton("Delete", new ChangeListener() {
+		scrollPaneContents.add(new VisTextButton("Delete", new ChangeListener() {
 			@Override
 			public void changed(ChangeEvent event, Actor actor) {
 				if(lock) return;

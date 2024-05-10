@@ -1,6 +1,7 @@
 package com.nikeschuh.tekkensavemanager.save;
 
 import com.badlogic.gdx.files.FileHandle;
+import com.nikeschuh.tekkensavemanager.SaveManager;
 
 import java.io.*;
 import java.nio.charset.StandardCharsets;
@@ -18,6 +19,7 @@ public class BackupManager {
 
     public static void createBackup(FileHandle saveDirectory, FileHandle target, Consumer<FileHandle> consumer, boolean backupReplays, boolean backupGhosts) {
         DataOutputStream outputStream = new DataOutputStream(target.write(false));
+        SaveManager.progressBar.setVisible(true);
         FileHandle[] saveFiles = Arrays.stream(saveDirectory.list("sav"))
                 .filter(fileHandle -> {
                     if (!backupGhosts && fileHandle.name().startsWith("ghost")) return false;
@@ -41,17 +43,21 @@ public class BackupManager {
             outputStream.writeInt(saveFiles.length);
 
 
-
+            int index = 1;
             for (CompressedData data : compressedData) {
                 byte[] nameData = data.getOriginalName().getBytes(StandardCharsets.UTF_8);
                 outputStream.writeInt(nameData.length);
                 outputStream.write(nameData);
                 outputStream.writeInt(data.getCompressedData().length);
                 outputStream.write(data.getCompressedData());
+                SaveManager.progressBar.setValue((float) index / saveFiles.length);
+                index++;
             }
 
             outputStream.flush();
             outputStream.close();
+
+            SaveManager.progressBar.setVisible(false);
 
             consumer.accept(target);
         }catch (IOException e) {
@@ -81,9 +87,10 @@ public class BackupManager {
                 return;
             }
 
+            SaveManager.progressBar.setVisible(true);
+
 
             for(int i =0; i < numberFiles; i++) {
-                System.out.println(i + "/" + numberFiles);
                 int nameDataLength = inputStream.readInt();
                 byte[] nameData = new byte[nameDataLength];
                 int nameResult = inputStream.read(nameData);
@@ -101,6 +108,7 @@ public class BackupManager {
 
                 FileHandle destinationFile = targetDirectory.child(originalFileName);
                 destinationFile.writeBytes(compressedData, false);
+                SaveManager.progressBar.setValue(((float)(i+ 1) / numberFiles));
             }
         }catch (IOException e) {
             System.err.println("Error reading backup file " + backupFile);
@@ -112,6 +120,8 @@ public class BackupManager {
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
+
+        SaveManager.progressBar.setVisible(false);
 
     }
 
